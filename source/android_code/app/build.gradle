@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    // Gradle 8+ এ namespace দেওয়া বাধ্যতামূলক (applicationId এর সাথে ম্যাচ রেখে)
+    // Gradle 8+ এ namespace দেওয়া বাধ্যতামূলক (applicationId এর সাথে ম্যাচ রেখে)
     namespace 'com.example.project'
     
     // আধুনিক SDK 34 এ আপগ্রেড করা হলো (Android 14)
@@ -19,7 +19,7 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    // 📦 অ্যাপের সাইজ সর্বোচ্চ ছোট (Maximum Small Size) করার জন্য আর্কিটেকচার স্প্লিট লজিক
+    // 📦 অ্যাপের সাইজ ছোট করার জন্য আর্কিটেকচার স্প্লিট লজিক (ঠিক রাখা হয়েছে)
     splits {
         abi {
             enable true
@@ -31,9 +31,9 @@ android {
 
     buildTypes {
         release {
-            // 🔒 কোড অবফাসকেশন ও সাইজ কম্প্রেশন অন করা হলো
-            minifyEnabled true
-            shrinkResources true
+            // 🛡️ ব্যাকব্লেজ বি২ ক্লাউড এসডিকে এবং নেটওয়ার্কিং ক্র্যাশ বন্ধ করার জন্য এগুলো false করা হলো
+            minifyEnabled false
+            shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -45,7 +45,7 @@ android {
 }
 
 dependencies {
-    // আধুনিক ও স্ট্যাবল ভার্সনে ডিপেন্ডেন্সিগুলো আপডেট করা হয়েছে
+    // আধুনিক ও স্ট্যাবল ভার্সনে ডিপেন্ডেন্সিগুলো আপডেট করা হয়েছে
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     
