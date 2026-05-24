@@ -28,6 +28,12 @@ jobs:
           gradle-version: '8.5'
           build-root-directory: 'source/android_code'
 
+      # 🔥 [FIX] এই নতুন স্টেপটি আপনার মিসিং gradle-wrapper.jar ফাইলটি অটো তৈরি করবে
+      - name: 🛠️ Force Regenerate Missing Gradle Wrapper Jar
+        run: |
+          cd source/android_code
+          gradle wrapper --gradle-version 8.5 --distribution-type bin
+
       - name: ⚙️ Ensure Execution Permission
         run: |
           cd source/android_code
@@ -44,9 +50,7 @@ jobs:
           echo "🛠️ Hardcoding Package and Theme in Manifest..."
           MANIFEST_PATH="source/android_code/app/src/main/AndroidManifest.xml"
           if [ -f "$MANIFEST_PATH" ]; then
-              # নিশ্চিত করা হচ্ছে প্যাকেজ নেম যেন জাভা ফাইলের সাথে সম্পূর্ণ ম্যাচ করে
               sed -i 's/<manifest.*/<manifest xmlns:android="http:\/\/schemas.android.com\/apk\/res\/android" package="com.example.project">/g' $MANIFEST_PATH
-              # MainActivity তে exported=true এবং সঠিক থিম ইমপ্লিমেন্টেশন লক করা
               sed -i 's/android:name="\.MainActivity"/android:name="\.MainActivity" android:exported="true"/g' $MANIFEST_PATH
               echo "✅ Manifest forced to production standard."
               cat $MANIFEST_PATH
@@ -64,13 +68,11 @@ jobs:
           sudo apt-get update && sudo apt-get install -y apksigner
           mkdir -p source/android_code/keystore
           
-          # ১. অটোমেটিক সিকিউর কী-স্টোর (.jks) জেনারেশন
           keytool -genkey -v -keystore source/android_code/keystore/release.jks \
             -alias oTtkingAlias -keyalg RSA -keysize 2048 -validity 10000 \
             -storepass "Ottking@SecurePass2026" -keypass "Ottking@SecurePass2026" \
             -dname "CN=ottking.top, OU=Production, O=Ottking, L=Sirajganj, S=Rajshahi, C=BD"
 
-          # ২. অটোমেটিক AAB (Android App Bundle) সাইন করা
           aab_file="source/android_code/app/build/outputs/bundle/release/app-release.aab"
           if [ -f "$aab_file" ]; then
               jarsigner -keystore source/android_code/keystore/release.jks \
@@ -78,12 +80,10 @@ jobs:
                 "$aab_file" oTtkingAlias
           fi
 
-          # ৩. V2/V3 সাইনিং মেকানিজমের জন্য JKS থেকে PKCS12 (.p12) কী-স্টোর জেনারেট করা
           keytool -importkeystore -srckeystore source/android_code/keystore/release.jks \
             -destkeystore source/android_code/keystore/release.p12 -deststoretype PKCS12 \
             -srcstorepass "Ottking@SecurePass2026" -deststorepass "Ottking@SecurePass2026"
 
-          # ৪. জিপ-এলাইনমেন্ট ইঞ্জিন রান করা (রানটাইম ক্র্যাশ বন্ধ করার মূল চাবিকাঠি)
           ZIPALIGN_PATH=$(find $ANDROID_HOME/build-tools/ -name zipalign | head -n 1)
           mkdir -p aligned_apks
           
@@ -99,7 +99,6 @@ jobs:
                     --ks-key-alias oTtkingAlias \
                     "aligned_apks/$filename"
                     
-                  # অটো-ভেরিফিকেশন চেক
                   apksigner verify "aligned_apks/$filename"
               fi
           done
