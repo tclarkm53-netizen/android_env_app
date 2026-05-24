@@ -1,0 +1,127 @@
+name: 🚀 2. Compile and Build App
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Parse setup.json Configuration
+        id: parse_json
+        run: |
+          JAVA_VER=$(jq -r '.java_version' setup/setup.json)
+          MODE=$(jq -r '.mode' setup/setup.json)
+          echo "JAVA_VER=$JAVA_VER" >> $GITHUB_ENV
+          echo "MODE=$MODE" >> $GITHUB_ENV
+
+      - name: Setup Java Environment
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VER }}
+
+      - name: Live Update Dependencies and Build Settings
+        run: |
+          TARGET_FILE="source/android_code/app/build.gradle"
+          
+          # ১. রিলিজ বিল্ডের জন্য সাইজ অপ্টিমাইজেশন, প্রোগার্ড ও স্প্লিট লজিক ইনজেকশন
+          # আগের ক্লোজিং ব্র্যাকেট কেটে সেখানে অপ্টিমাইজড রিলিজ ব্লক এবং স্প্লিট ব্লক পুশ করা
+          sed -i '$ d' $TARGET_FILE # শেষ লাইনের ব্র্যাকেট রিমুভ
+          
+          cat << 'EOF' >> $TARGET_FILE
+              
+              splits {
+                  abi {
+                      enable true
+                      reset()
+                      include 'armeabi-v7a', 'arm64-v8a'
+                      universalApk true
+                  }
+              }
+              
+              buildTypes {
+                  release {
+                      minifyEnabled true
+                      shrinkResources true
+                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                  }
+              }
+          }
+          EOF
+
+          # ২. পূর্বের ডামি dependencies ব্লক রিমুভ করে ডাইনামিক ডিপেন্ডেন্সি ইনজেক্ট করা
+          sed -i '/dependencies {/,/}/d' $TARGET_FILE
+          
+          echo -e "\ndependencies {" >> $TARGET_FILE
+          echo "    implementation 'androidx.appcompat:appcompat:1.6.1'" >> $TARGET_FILE
+          echo "    implementation 'com.google.android.material:material:1.11.0'" >> $TARGET_FILE
+          echo "    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'" >> $TARGET_FILE
+          
+          # setup.json থেকে ইউজার ডিফাইনড লাইব্রেরিগুলো লুপ চালিয়ে অ্যাড করা
+          jq -r '.dependencies[]' setup/setup.json | while read -r lib; do
+              if [ ! -z "$lib" ] && [ "$lib" != "null" ]; then 
+                  echo "    implementation '$lib'" >> $TARGET_FILE
+              fi
+          done
+          echo "}" >> $TARGET_FILE
+
+      - name: Grant Execute Permission to Gradle
+        run: chmod +x source/android_code/gradlew
+
+      - name: Build with Gradle (Compile Release APK & AAB)
+        run: |
+          cd source/android_code
+          ./gradlew assembleRelease
+          ./gradlew bundleRelease
+
+      - name: Setup Android Signing Tools
+        run: sudo apt-get update && sudo apt-get install -y apksigner
+
+      - name: Generate Production Keystore
+        run: |
+          mkdir -p source/android_code/keystore
+          keytool -genkey -v -keystore source/android_code/keystore/release.jks \
+            -alias oTtkingAlias -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "Ottking@SecurePass2026" -keypass "Ottking@SecurePass2026" \
+            -dname "CN=ottking.top, OU=Production, O=Ottking, L=Sirajganj, S=Rajshahi, C=BD"
+
+      - name: Sign Android Outputs (APKs & AAB)
+        run: |
+          # সব জেনারেটেড এপিকে সাইন করা (Universal এবং Architecture Specific)
+          for apk in source/android_code/app/build/outputs/apk/release/*.apk; do
+              if [ -f "$apk" ]; then
+                  echo "Signing: $apk"
+                  jarsigner -keystore source/android_code/keystore/release.jks \
+                    -storepass "Ottking@SecurePass2026" -keypass "Ottking@SecurePass2026" \
+                    "$apk" oTtkingAlias
+              fi
+          done
+          
+          # এএবি ফাইল সাইন করা প্লে-স্টোরের জন্য
+          aab_file="source/android_code/app/build/outputs/bundle/release/app-release.aab"
+          if [ -f "$aab_file" ]; then
+              jarsigner -keystore source/android_code/keystore/release.jks \
+                -storepass "Ottking@SecurePass2026" -keypass "Ottking@SecurePass2026" \
+                "$aab_file" oTtkingAlias
+          fi
+
+      - name: Organize Artifacts for Deployment
+        run: |
+          mkdir -p deploy_artifacts
+          cp source/android_code/app/build/outputs/apk/release/*.apk deploy_artifacts/
+          if [ -f "source/android_code/app/build/outputs/bundle/release/app-release.aab" ]; then
+              cp source/android_code/app/build/outputs/bundle/release/app-release.aab deploy_artifacts/
+          fi
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: 📦 Ottking-Production-Builds
+          path: deploy_artifacts/
