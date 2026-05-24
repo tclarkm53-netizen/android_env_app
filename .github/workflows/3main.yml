@@ -1,0 +1,119 @@
+name: 🚀 3.Headless Android Studio Engine Builder
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_app:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: 📂 Checkout Original Source Code
+        uses: actions/checkout@v4
+
+      - name: ☕ Setup Java Environment
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: ⚙️ Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 📥 Auto-Generate Official Gradle Wrapper System
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+          build-root-directory: 'source/android_code'
+
+      - name: ⚙️ Ensure Execution Permission
+        run: |
+          cd source/android_code
+          chmod +x gradlew
+
+      - name: 🧹 Deep Clean Invalid Resource Files
+        run: |
+          echo "🔍 Cleaning invalid metadata..."
+          find . -type f -name "m.txt" -print -delete
+          find . -type f -name "*.txt" -path "*/src/main/res/*" -print -delete
+
+      - name: 📜 Auto-Patch AndroidManifest.xml for App Stability
+        run: |
+          echo "🛠️ Hardcoding Package and Theme in Manifest..."
+          MANIFEST_PATH="source/android_code/app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST_PATH" ]; then
+              # নিশ্চিত করা হচ্ছে প্যাকেজ নেম যেন জাভা ফাইলের সাথে সম্পূর্ণ ম্যাচ করে
+              sed -i 's/<manifest.*/<manifest xmlns:android="http:\/\/schemas.android.com\/apk\/res\/android" package="com.example.project">/g' $MANIFEST_PATH
+              # MainActivity তে exported=true এবং সঠিক থিম ইমপ্লিমেন্টেশন লক করা
+              sed -i 's/android:name="\.MainActivity"/android:name="\.MainActivity" android:exported="true"/g' $MANIFEST_PATH
+              echo "✅ Manifest forced to production standard."
+              cat $MANIFEST_PATH
+          fi
+
+      - name: 🛠️ Execute Gradle Compilation (Safe Mode)
+        run: |
+          cd source/android_code
+          ./gradlew clean
+          ./gradlew assembleRelease
+          ./gradlew bundleRelease
+
+      - name: 🛡️ Automatic ZipAlign & Production Level Signing
+        run: |
+          sudo apt-get update && sudo apt-get install -y apksigner
+          mkdir -p source/android_code/keystore
+          
+          # ১. অটোমেটিক সিকিউর কী-স্টোর (.jks) জেনারেশন
+          keytool -genkey -v -keystore source/android_code/keystore/release.jks \
+            -alias oTtkingAlias -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "Ottking@SecurePass2026" -keypass "Ottking@SecurePass2026" \
+            -dname "CN=ottking.top, OU=Production, O=Ottking, L=Sirajganj, S=Rajshahi, C=BD"
+
+          # ২. অটোমেটিক AAB (Android App Bundle) সাইন করা
+          aab_file="source/android_code/app/build/outputs/bundle/release/app-release.aab"
+          if [ -f "$aab_file" ]; then
+              jarsigner -keystore source/android_code/keystore/release.jks \
+                -storepass "Ottking@SecurePass2026" -keypass "Ottking@SecurePass2026" \
+                "$aab_file" oTtkingAlias
+          fi
+
+          # ৩. V2/V3 সাইনিং মেকানিজমের জন্য JKS থেকে PKCS12 (.p12) কী-স্টোর জেনারেট করা
+          keytool -importkeystore -srckeystore source/android_code/keystore/release.jks \
+            -destkeystore source/android_code/keystore/release.p12 -deststoretype PKCS12 \
+            -srcstorepass "Ottking@SecurePass2026" -deststorepass "Ottking@SecurePass2026"
+
+          # ৪. জিপ-এলাইনমেন্ট ইঞ্জিন রান করা (রানটাইম ক্র্যাশ বন্ধ করার মূল চাবিকাঠি)
+          ZIPALIGN_PATH=$(find $ANDROID_HOME/build-tools/ -name zipalign | head -n 1)
+          mkdir -p aligned_apks
+          
+          for apk in source/android_code/app/build/outputs/apk/release/*.apk; do
+              if [ -f "$apk" ]; then
+                  filename=$(basename "$apk")
+                  echo "⚙️ Resegmenting and Aligning: $filename"
+                  $ZIPALIGN_PATH -v 4 "$apk" "aligned_apks/$filename"
+                  
+                  echo "🛡️ Injecting V2/V3 Official Auto Signature..."
+                  apksigner sign --ks source/android_code/keystore/release.p12 \
+                    --ks-pass pass:"Ottking@SecurePass2026" \
+                    --ks-key-alias oTtkingAlias \
+                    "aligned_apks/$filename"
+                    
+                  # অটো-ভেরিফিকেশন চেক
+                  apksigner verify "aligned_apks/$filename"
+              fi
+          done
+
+      - name: 📦 Collect and Export Clean Production Artifacts
+        run: |
+          mkdir -p release_binaries
+          cp aligned_apks/*.apk release_binaries/
+          if [ -f "source/android_code/app/build/outputs/bundle/release/app-release.aab" ]; then
+              cp source/android_code/app/build/outputs/bundle/release/app-release.aab release_binaries/
+          fi
+
+      - name: 🚀 Upload Highly-Optimized Device Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: 📦 Ottking-Production-Package
+          path: release_binaries/
