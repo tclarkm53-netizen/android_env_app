@@ -1,0 +1,15 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Android Gradle Plugin (AGP) সংস্করণ ৮.২.২ সেট করা হলো যা গ্রেডল ৮.৫ এর সাথে পারফেক্ট কাজ করে
+        classpath 'com.android.tools.build:gradle:8.2.2'
+    }
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.buildDir
+}

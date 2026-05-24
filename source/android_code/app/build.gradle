@@ -1,35 +1,61 @@
-apply plugin: 'com.android.application'
+plugins {
+    id 'com.android.application'
+}
 
 android {
-    compileSdkVersion 29
-    buildToolsVersion "29.0.2"
+    // Gradle 8+ এ namespace দেওয়া বাধ্যতামূলক (applicationId এর সাথে ম্যাচ রেখে)
+    namespace 'com.example.project'
+    
+    // আধুনিক SDK 34 এ আপগ্রেড করা হলো (Android 14)
+    compileSdk 34
+
     defaultConfig {
         applicationId "com.example.project"
-        minSdkVersion 24
-        targetSdkVersion 29
+        minSdk 24
+        targetSdk 34
         versionCode 1
         versionName "1.0"
+
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
+
+    // 📦 অ্যাপের সাইজ সর্বোচ্চ ছোট (Maximum Small Size) করার জন্য আর্কিটেকচার স্প্লিট লজিক
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'armeabi-v7a', 'arm64-v8a'
+            universalApk true
+        }
+    }
+
     buildTypes {
         release {
-            minifyEnabled false
+            // 🔒 কোড অবফাসকেশন ও সাইজ কম্প্রেশন অন করা হলো
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
     compileOptions {
-        sourceCompatibility = 1.8
-        targetCompatibility = 1.8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 }
 
 dependencies {
-    implementation 'androidx.appcompat:appcompat:1.1.0'
-    implementation 'androidx.constraintlayout:constraintlayout:1.1.3'
-    testImplementation 'junit:junit:4.13'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.1'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
+    // আধুনিক ও স্ট্যাবল ভার্সনে ডিপেন্ডেন্সিগুলো আপডেট করা হয়েছে
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    
     implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'], exclude: [])
+    
+    // আপনার ব্যাকব্লেজ বি২ ক্লাউড এসডিকে
     implementation 'com.backblaze.b2:b2-sdk-core:3.1.0'
     implementation 'com.backblaze.b2:b2-sdk-okhttp:3.1.0'
 }

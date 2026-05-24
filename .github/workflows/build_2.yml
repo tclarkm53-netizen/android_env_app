@@ -1,0 +1,85 @@
+name: 🚀 2.Headless Android Studio Engine Builder
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_app:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: 📂 Checkout Original Source Code
+        uses: actions/checkout@v4
+
+      - name: ☕ Setup Java Environment
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17' # Gradle 8.5 এর জন্য অফিশিয়াল জাভা ১৭
+
+      - name: ⚙️ Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 📥 Auto-Generate Official Gradle Wrapper System (Zero-Repo Files)
+        run: |
+          BASE_DIR="source/android_code"
+          cd "$BASE_DIR"
+          
+          # ১. গিটহাবে গ্র্যাডল ইনস্টল না থাকলেও উবুন্টুর ডিফল্ট ইঞ্জিন ব্যবহার করে 
+          # আপনার সোর্সের জন্য অফিশিয়াল গ্র্যাডল ৮.৫ র‍্যাপার ফাইলগুলো অটো-জেনারেট করা হচ্ছে।
+          # এর ফলে রিপোজিটরিতে gradlew বা wrapper ফোল্ডার রাখার কোনো প্রয়োজন নেই।
+          npm install -g gradle
+          gradle wrapper --gradle-version 8.5 --distribution-type all
+          
+          # এক্সিকিউট পারমিশন নিশ্চিত করা
+          chmod +x gradlew
+
+      - name: 🛠️ Execute Gradle Compilation (Build APK & AAB)
+        run: |
+          cd source/android_code
+          ./gradlew clean
+          ./gradlew assembleRelease
+          ./gradlew bundleRelease
+
+      - name: 🛡️ Production Level Signing (Generate Keystore)
+        run: |
+          sudo apt-get update && sudo apt-get install -y apksigner
+          mkdir -p source/android_code/keystore
+          
+          keytool -genkey -v -keystore source/android_code/keystore/release.jks \
+            -alias oTtkingAlias -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "Ottking@SecurePass2026" -keypass "Ottking@SecurePass2026" \
+            -dname "CN=ottking.top, OU=Production, O=Ottking, L=Sirajganj, S=Rajshahi, C=BD"
+
+          # তৈরি হওয়া স্প্লিট এপিকেগুলো সাইন করা
+          for apk in source/android_code/app/build/outputs/apk/release/*.apk; do
+              if [ -f "$apk" ]; then
+                  jarsigner -keystore source/android_code/keystore/release.jks \
+                    -storepass "Ottking@SecurePass2026" -keypass "Ottking@SecurePass2026" \
+                    "$apk" oTtkingAlias
+              fi
+          done
+          
+          # গুগল প্লে-স্টোরের জন্য এএবি ফাইল সাইন করা
+          aab_file="source/android_code/app/build/outputs/bundle/release/app-release.aab"
+          if [ -f "$aab_file" ]; then
+              jarsigner -keystore source/android_code/keystore/release.jks \
+                -storepass "Ottking@SecurePass2026" -keypass "Ottking@SecurePass2026" \
+                "$aab_file" oTtkingAlias
+          fi
+
+      - name: 📦 Collect and Export Clean Production Artifacts
+        run: |
+          mkdir -p release_binaries
+          cp source/android_code/app/build/outputs/apk/release/*.apk release_binaries/
+          if [ -f "source/android_code/app/build/outputs/bundle/release/app-release.aab" ]; then
+              cp source/android_code/app/build/outputs/bundle/release/app-release.aab release_binaries/
+          fi
+
+      - name: 🚀 Upload Highly-Optimized Device Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: 📦 Ottking-Production-Package
+          path: release_binaries/
