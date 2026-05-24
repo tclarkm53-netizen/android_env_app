@@ -28,7 +28,6 @@ jobs:
           gradle-version: '8.5'
           build-root-directory: 'source/android_code'
 
-      # 🔥 [FIX] এই নতুন স্টেপটি আপনার মিসিং gradle-wrapper.jar ফাইলটি অটো তৈরি করবে
       - name: 🛠️ Force Regenerate Missing Gradle Wrapper Jar
         run: |
           cd source/android_code
@@ -45,16 +44,8 @@ jobs:
           find . -type f -name "m.txt" -print -delete
           find . -type f -name "*.txt" -path "*/src/main/res/*" -print -delete
 
-      - name: 📜 Auto-Patch AndroidManifest.xml for App Stability
-        run: |
-          echo "🛠️ Hardcoding Package and Theme in Manifest..."
-          MANIFEST_PATH="source/android_code/app/src/main/AndroidManifest.xml"
-          if [ -f "$MANIFEST_PATH" ]; then
-              sed -i 's/<manifest.*/<manifest xmlns:android="http:\/\/schemas.android.com\/apk\/res\/android" package="com.example.project">/g' $MANIFEST_PATH
-              sed -i 's/android:name="\.MainActivity"/android:name="\.MainActivity" android:exported="true"/g' $MANIFEST_PATH
-              echo "✅ Manifest forced to production standard."
-              cat $MANIFEST_PATH
-          fi
+      # 🛠️ [FIXED] সমস্ত ঝুঁকিপূর্ণ XML এডিটিং ও sed কমান্ড এখান থেকে সম্পূর্ণ রিমুভ করা হয়েছে।
+      # রানার এখন আপনার দেওয়া নিখুঁত AndroidManifest.xml ফাইলটি সরাসরি ব্যবহার করবে।
 
       - name: 🛠️ Execute Gradle Compilation (Safe Mode)
         run: |
