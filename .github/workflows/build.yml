@@ -1,0 +1,117 @@
+name: 🚀 Headless Android Studio Engine Builder
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_app:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: 📂 Checkout Original Source Code
+        uses: actions/checkout@v4
+
+      - name: ☕ Setup Java Environment
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17' # অ্যান্ড্রয়েড গ্রেডল ৮.০+ এর জন্য স্ট্যান্ডার্ড জাভা ১৭
+
+      - name: ⚙️ Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 📥 Inject Official Hidden Gradle Wrapper System
+        run: |
+          # সোর্স কোডের ডিরেক্টরি রুট ট্র্যাক করা
+          BASE_DIR="source/android_code"
+          
+          # ১. গ্র্যাডল র্যাপার চালানোর জন্য প্রয়োজনীয় হিডেন কোর ফোল্ডার তৈরি
+          mkdir -p "$BASE_DIR/gradle/wrapper"
+          
+          # ২. অফিশিয়াল গ্র্যাডল র্যাপার বাইনারি এবং স্ক্রিপ্ট ডাউনলোড ও ইনজেক্ট
+          wget https://raw.githubusercontent.com/gradle/gradle/v8.5.0/gradlew -O "$BASE_DIR/gradlew"
+          chmod +x "$BASE_DIR/gradlew"
+          
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-all.zip" > "$BASE_DIR/gradle/wrapper/gradle-wrapper.properties"
+          wget https://raw.githubusercontent.com/gradle/gradle/v8.5.0/gradle/wrapper/gradle-wrapper.jar -O "$BASE_DIR/gradle/wrapper/gradle-wrapper.jar"
+
+      - name: 🔒 Inject Maximum Small Size & Splits Settings
+        run: |
+          TARGET_FILE="source/android_code/app/build.gradle"
+          
+          # আপনার দেওয়া app/build.gradle ফাইলের শেষে প্রো-গার্ড অপ্টিমাইজেশন ও স্প্লিট আর্কিটেকচার পুশ করা
+          # এটি করার ফলে এক্সট্রা কোনো ফাইল ছাড়াই আপনার অ্যাপ সাইজ সর্বোচ্চ ছোট হবে
+          
+          # যদি ফাইলে ইতিমধ্যে ক্লোজিং ব্র্যাকেট থাকে, সেটি হ্যান্ডেল করে নিচে বিল্ড টাইপ কনফিগ অ্যাপেন্ড করা
+          sed -i '$ d' $TARGET_FILE # শেষ লাইনের ব্র্যাকেট রিমুভ করে কোড ইনজেকশন দেওয়া
+          
+          cat << 'EOF' >> $TARGET_FILE
+              
+              splits {
+                  abi {
+                      enable true
+                      reset()
+                      include 'armeabi-v7a', 'arm64-v8a'
+                      universalApk true
+                  }
+              }
+              
+              buildTypes {
+                  release {
+                      minifyEnabled true
+                      shrinkResources true
+                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                  }
+              }
+          }
+          EOF
+
+      - name: 🛠️ Execute Gradle Compilation (Build APK & AAB)
+        run: |
+          cd source/android_code
+          ./gradlew assembleRelease
+          ./gradlew bundleRelease
+
+      - name: 🛡️ Production Level Signing (Generate Keystore)
+        run: |
+          sudo apt-get update && sudo apt-get install -y apksigner
+          mkdir -p source/android_code/keystore
+          
+          # প্রোডাকশন গ্রেড রিলিজ কী-স্টোর তৈরি
+          keytool -genkey -v -keystore source/android_code/keystore/release.jks \
+            -alias oTtkingAlias -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "Ottking@SecurePass2026" -keypass "Ottking@SecurePass2026" \
+            -dname "CN=ottking.top, OU=Production, O=Ottking, L=Sirajganj, S=Rajshahi, C=BD"
+
+          # তৈরি হওয়া সব আর্কিটেকচার এপিকে সাইন করা
+          for apk in source/android_code/app/build/outputs/apk/release/*.apk; do
+              if [ -f "$apk" ]; then
+                  jarsigner -keystore source/android_code/keystore/release.jks \
+                    -storepass "Ottking@SecurePass2026" -keypass "Ottking@SecurePass2026" \
+                    "$apk" oTtkingAlias
+              fi
+          done
+          
+          # প্লে-স্টোরের জন্য এএবি ফাইল সাইন করা
+          aab_file="source/android_code/app/build/outputs/bundle/release/app-release.aab"
+          if [ -f "$aab_file" ]; then
+              jarsigner -keystore source/android_code/keystore/release.jks \
+                -storepass "Ottking@SecurePass2026" -keypass "Ottking@SecurePass2026" \
+                "$aab_file" oTtkingAlias
+          fi
+
+      - name: 📦 Collect and Export Clean Production Artifacts
+        run: |
+          mkdir -p release_binaries
+          cp source/android_code/app/build/outputs/apk/release/*.apk release_binaries/
+          if [ -f "source/android_code/app/build/outputs/bundle/release/app-release.aab" ]; then
+              cp source/android_code/app/build/outputs/bundle/release/app-release.aab release_binaries/
+          fi
+
+      - name: 🚀 Upload Highly-Optimized Device Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: 📦 Ottking-Production-Package
+          path: release_binaries/
